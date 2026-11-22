@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npx --yes vercel dev",
-    "dev:ui": "vite --host --port 5180 --strictPort",
+    "dev:ui": "vite --port 5180 --strictPort",
     "build": "vite build",
     "preview": "vite preview",
     "db:setup": "node --env-file=.env.local scripts/setup-db.js"

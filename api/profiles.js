@@ -6,8 +6,9 @@ export default route(async (req, res, sql) => {
   }
   if (req.method === 'PUT') {
     const { firm, gstin = '', phone = '' } = req.body ?? {};
-    if (!firm || typeof firm !== 'string') return res.status(400).json({ error: 'firm required' });
-    await sql`INSERT INTO firm_profiles (firm, gstin, phone) VALUES (${firm}, ${String(gstin)}, ${String(phone)})
+    if (!firm || typeof firm !== 'string' || firm.length > 200) return res.status(400).json({ error: 'firm required (max 200 chars)' });
+    const g = String(gstin).trim().slice(0, 30), p = String(phone).trim().slice(0, 30);
+    await sql`INSERT INTO firm_profiles (firm, gstin, phone) VALUES (${firm}, ${g}, ${p})
               ON CONFLICT (firm) DO UPDATE SET gstin=EXCLUDED.gstin, phone=EXCLUDED.phone`;
     return res.json({ ok: true });
   }

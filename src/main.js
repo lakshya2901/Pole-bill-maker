@@ -18,7 +18,7 @@ const CHARTS = {
 
 /* ================= Helpers ================= */
 const $ = id => document.getElementById(id);
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const ONES = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
 const TENS = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
@@ -38,6 +38,16 @@ function words(n) { // Indian numbering
 }
 const rsPart = p => String(Math.floor(p/100));
 const pPart = p => String(p%100).padStart(2,'0');
+// Decimal string -> integer paise (half-up on the 3rd decimal). Invalid / negative -> 0. Avoids float error (1.005 -> 101).
+function toPaise(v) {
+  const s = String(v ?? '').trim();
+  const mt = s.match(/^(\d{0,9})(?:\.(\d*))?$/);
+  if (!s || !mt || (mt[1] === '' && !mt[2])) return 0;
+  const frac = (mt[2] || '').padEnd(3, '0');
+  return Number(mt[1] || 0) * 100 + Number(frac.slice(0, 2)) + (frac[2] >= '5' ? 1 : 0);
+}
+const MAX_QTY = 100000;
+const cleanQty = v => Math.min(MAX_QTY, Math.max(0, Math.floor(Number(v) || 0)));
 const fmt = p => '₹ ' + (p/100).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 
 /* ================= State ================= */
@@ -74,11 +84,19 @@ const DEFAULTS = {
   qty:'', poleRate:'', spec:'9 mtr 200 kg', chart:'A', km:'', from:'Delwara', to:'Kuchaman',
   tcRate:'', tcNo:'', tcDate:'', taxMode:'round', layout:'p1', incGoods:true, incTc:true
 };
-let state = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('billState') || '{}'));
-let minC = JSON.parse(localStorage.getItem('billMinC') || 'false');
+let storageWarned = false;
+function safeParse(key, fallback) {
+  try { const v = JSON.parse(localStorage.getItem(key) ?? 'null'); return v ?? fallback; }
+  catch (e) { console.warn('Ignoring unreadable saved data for', key, e); try { localStorage.removeItem(key); } catch {} return fallback; }
+}
+const savedState = safeParse('billState', {});
+let state = Object.assign({}, DEFAULTS, typeof savedState === 'object' && !Array.isArray(savedState) ? savedState : {});
+let minC = safeParse('billMinC', false) === true;
 let tcRateManual = !!state.tcRateManual;            // user typed their own transport rate
-let profiles = JSON.parse(localStorage.getItem('billProfiles') || '{}'); // gstin/phone per firm
-if (!profiles['Babel Cement']) profiles['Babel Cement'] = { gstin:'08AGKPB8389F1Z2', phone:'94142-59198' };
+let profiles = safeParse('billProfiles', {});       // gstin/phone per firm
+if (typeof profiles !== 'object' || Array.isArray(profiles)) profiles = {};
+// An older version seeded Babel Cement with another firm's phone number — drop it.
+if (profiles['Babel Cement']?.phone === '94142-59198') delete profiles['Babel Cement'];
 
 const FIRM_SHORT = { 'Gaurav Cement Works':'GCW', 'Peeyush Cement Works':'PCW', 'Babel Cement':'BC' };
 function firmShort() {
@@ -94,9 +112,14 @@ function printNamed() {
 }
 function firmName() { return state.firm === CUSTOM ? (state.firmCustom || '') : state.firm; }
 function save() {
-  localStorage.setItem('billState', JSON.stringify(Object.assign({}, state, { tcRateManual })));
-  localStorage.setItem('billMinC', JSON.stringify(minC));
-  localStorage.setItem('billProfiles', JSON.stringify(profiles));
+  try {
+    localStorage.setItem('billState', JSON.stringify(Object.assign({}, state, { tcRateManual })));
+    localStorage.setItem('billMinC', JSON.stringify(minC));
+    localStorage.setItem('billProfiles', JSON.stringify(profiles));
+  } catch (e) {
+    console.warn('Could not save draft locally', e);
+    if (!storageWarned) { storageWarned = true; cloudStatus("Couldn't keep a local draft (browser storage unavailable)", 'err'); }
+  }
 }
 
 /* ================= Calculation ================= */
@@ -118,6 +141,17 @@ function chartRate() {
   if (state.km !== '' && Number.isInteger(km) && km >= 1 && km <= 400) return c[km];
   return null;
 }
+// Effective transport rate (string, rupees) for a state-like object d.
+function tcRateStr(d, manual, mc) {
+  if (manual && d.tcRate !== '' && d.tcRate != null) return d.tcRate;
+  const c = CHARTS[d.chart] || CHARTS.A, km = Number(d.km);
+  const p = mc ? c['Min C'] : (d.km !== '' && d.km != null && Number.isInteger(km) && km >= 1 && km <= 400 ? c[km] : null);
+  return p == null ? '' : (p / 100).toFixed(2);
+}
+// Quantity + rate (paise) for one bill, from the live state or a saved record — single source for screen, Word and the list.
+function billInputs(kind, d = state, manual = tcRateManual, mc = minC) {
+  return { qty: cleanQty(d.qty), ratePaise: toPaise(kind === 'tc' ? tcRateStr(d, manual, mc) : d.poleRate) };
+}
 function kmLabel() { return minC ? 'Min C' : String(state.km); }
 
 /* ================= Bill HTML ================= */
@@ -134,12 +168,10 @@ function amountRows(calc, upper) {
 }
 function billHTML(kind) {
   const isTc = kind === 'tc';
-  const qty = Math.max(0, Math.floor(Number(state.qty) || 0));
+  const { qty, ratePaise } = billInputs(kind);
   const firm = firmName();
   const invNo = isTc && state.tcNo.trim() ? state.tcNo : state.invNo;
   const date = isTc && state.tcDate.trim() ? state.tcDate : state.date;
-  const ratePaise = isTc ? Math.round((Number(effectiveTcRate()) || 0) * 100)
-                         : Math.round((Number(state.poleRate) || 0) * 100);
   const calc = computeBill(qty, ratePaise);
   const consDate = isTc ? state.consDate2 : state.consDate1;
   const consLines = esc(state.consText).split('\n');
@@ -193,11 +225,7 @@ function billHTML(kind) {
     </div>
   </div>`;
 }
-function effectiveTcRate() {
-  if (tcRateManual && state.tcRate !== '') return state.tcRate;
-  const p = chartRate();
-  return p == null ? '' : (p/100).toFixed(2);
-}
+function effectiveTcRate() { return tcRateStr(state, tcRateManual, minC); }
 
 /* ================= Render ================= */
 function sheetsFromBills(bills, layout) {
@@ -251,7 +279,7 @@ function fit() {
 /* ================= Wiring ================= */
 function loadFirmProfile() {
   const pr = profiles[firmName()] || { gstin:'', phone:'' };
-  state.gstin = FIRM_GSTIN[firmName()] || pr.gstin; state.phone = FIRM_PHONE[firmName()] || pr.phone;
+  state.gstin = pr.gstin || FIRM_GSTIN[firmName()] || ''; state.phone = pr.phone || FIRM_PHONE[firmName()] || '';
   $('gstin').value = state.gstin; $('phone').value = state.phone;
 }
 function missingRequired() {
@@ -259,6 +287,9 @@ const m = [];
 if (!firmName().trim()) m.push('Firm name');
 if (!state.gstin.trim()) m.push('GSTIN');
 if (!state.phone.trim()) m.push('Phone');
+if (!cleanQty(state.qty)) m.push('Quantity');
+if (state.incGoods && !billInputs('goods').ratePaise) m.push('Pole rate');
+if (state.incTc && !billInputs('tc').ratePaise) m.push('Transport rate (enter KM or tap Min C)');
 ['gstin','phone'].forEach(id => $(id).classList.toggle('invalid', !state[id].trim()));
 return m;
 }
@@ -329,11 +360,10 @@ async function buildDocxBlob() {
 
   function bill(kind, pt, W, fillEm, pb) {
     const isTc = kind === 'tc';
-    const qty = Math.max(0, Math.floor(Number(state.qty) || 0));
+    const { qty, ratePaise } = billInputs(kind);
     const firm = firmName();
     const invNo = isTc && state.tcNo.trim() ? state.tcNo : state.invNo;
     const date = isTc && state.tcDate.trim() ? state.tcDate : state.date;
-    const ratePaise = isTc ? Math.round((Number(effectiveTcRate()) || 0) * 100) : Math.round((Number(state.poleRate) || 0) * 100);
     const c = computeBill(qty, ratePaise);
     const consDate = isTc ? state.consDate2 : state.consDate1;
     const qtyWords = `${qty}( ${words(qty)}${isTc ? '' : ' '}) Nos. of P.C.C. Poles Of ${state.spec}`;
@@ -485,27 +515,37 @@ async function downloadWord() {
 $('wordBtn').addEventListener('click', async () => {
   cloudStatus('Preparing Word file…');
   try { const n = await downloadWord(); cloudStatus(n ? 'Downloaded ' + n : '', n ? 'ok' : ''); }
-  catch (e) { console.error(e); cloudStatus('Word export failed: ' + e.message, 'err'); }
+  catch (e) { console.error(e); cloudStatus('Word export failed: ' + (/dynamically imported|Failed to fetch/i.test(e.message) ? 'could not load the Word module — reload the page and try again' : e.message), 'err'); }
 });
 
 /* ================= Cloud (Neon via /api) ================= */
 let currentId = null;
-const cloudStatus = (msg, cls = '') => { $('cloudStatus').textContent = msg; $('cloudStatus').className = 'status ' + cls; };
+function cloudStatus(msg, cls = '') { $('cloudStatus').textContent = msg; $('cloudStatus').className = 'status ' + cls; }
 
 async function api(path, opts = {}) {
-  const res = await fetch('/api/' + path, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json' },
-    body: opts.body ? JSON.stringify(opts.body) : undefined
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || ('Request failed (' + res.status + ')'));
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 20000);
+  let res;
+  try {
+    res = await fetch('/api/' + path, {
+      ...opts, signal: ctl.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+  } catch (e) {
+    throw new Error(e.name === 'AbortError' ? 'Server took too long to respond' : 'Cannot reach the server — check your internet connection');
+  } finally { clearTimeout(timer); }
+  let json = null;
+  try { json = await res.json(); } catch { /* non-JSON body */ }
+  if (!res.ok) throw new Error(json?.error || ('Request failed (' + res.status + ' ' + (res.statusText || 'error') + ' on /' + path + ')'));
+  if (json == null) throw new Error('Unexpected empty response from /' + path);
   return json;
 }
 
 function snapshot() { return { ...state, minC, tcRateManual, firmName: firmName() }; }
 function applyState(d) {
   state = Object.assign({}, DEFAULTS, d);
+  if (state.firm !== CUSTOM && !FIRMS.includes(state.firm)) { state.firmCustom = state.firmCustom || state.firm || ''; state.firm = CUSTOM; }
   minC = !!d.minC; tcRateManual = !!d.tcRateManual;
   FIELDS.forEach(id => { $(id).value = state[id] ?? ''; });
   CHECKS.forEach(id => { $(id).checked = !!state[id]; });
@@ -537,11 +577,11 @@ let filt = { q: '', firm: '' };
 
 function totalsOf(d) {
   const mode = d.taxMode || 'round';
-  const qty = Math.max(0, Math.floor(Number(d.qty) || 0));
-  let tcRate = Number(d.tcRate);
-  if (!(tcRate > 0)) { const c = CHARTS[d.chart || 'A']; const k = d.minC ? 'Min C' : Number(d.km); tcRate = (c[k] || 0) / 100; }
-  const goods = computeBill(qty, Math.round((Number(d.poleRate) || 0) * 100), mode);
-  const tc = computeBill(qty, Math.round(tcRate * 100), mode);
+  const manual = !!d.tcRateManual, mc = !!d.minC;
+  const g = billInputs('goods', d, manual, mc), t = billInputs('tc', d, manual, mc);
+  const qty = g.qty;
+  const goods = computeBill(qty, g.ratePaise, mode);
+  const tc = computeBill(qty, t.ratePaise, mode);
   return { qty, goods: d.incGoods === false ? 0 : goods.say, tc: d.incTc === false ? 0 : tc.say };
 }
 const inr = p => '₹ ' + (p / 100).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -568,10 +608,14 @@ function renderBills() {
       <div class="bc-btns"><button class="btn" data-open="${b.id}">Open</button><button class="btn primary" data-print="${b.id}">Print</button><button class="btn" data-word="${b.id}">Word</button><button class="btn danger" data-del="${b.id}">Delete</button></div>
     </div>`;
   }).join('') || `<div class="empty">${allBills.length ? 'No bills match your search.' : 'No saved bills yet. Create one and press Save.'}</div>`;
-  $('billsSummary').textContent = `${rows.length} bill(s) · combined value ${inr(sum)}`;
+  $('billsSummary').textContent = `${rows.length} bill(s) · combined value ${inr(sum)}` +
+    (allBills.length >= LIST_LIMIT ? ` · showing only the latest ${LIST_LIMIT} saved bills` : '');
 }
+const LIST_LIMIT = 200;
 async function refreshList() {
-  allBills = await api('invoices');
+  const rows = await api('invoices');
+  if (!Array.isArray(rows)) throw new Error('Unexpected response while loading saved bills');
+  allBills = rows;
   renderBills();
 }
 $('billSearch').addEventListener('input', e => { filt.q = e.target.value; renderBills(); });
@@ -589,8 +633,20 @@ $('billsList').addEventListener('click', async e => {
       return;
     }
     const row = allBills.find(b => b.id === id);
-    currentId = id; applyState(row.data);
-    if (t.dataset.word !== undefined) { renderBills(); $('billsSummary').textContent = 'Preparing Word file…'; const n = await downloadWord(); if (n) $('billsSummary').textContent = 'Downloaded ' + n; return; }
+    if (!row) { alert('That bill is no longer in the list — reloading the list.'); await refreshList(); return; }
+    if (t.dataset.word !== undefined) {
+      // Export without disturbing the editor: load the bill, build the file, then put the draft back.
+      const prev = { ...snapshot() }, prevId = currentId;
+      $('billsSummary').textContent = 'Preparing Word file…';
+      let n = false;
+      try { applyState(row.data); n = await downloadWord(); }
+      finally { currentId = prevId; applyState(prev); renderBills(); }
+      $('billsSummary').textContent = n ? 'Downloaded ' + n : '';
+      return;
+    }
+    const draftDirty = id !== currentId && (state.invNo.trim() || cleanQty(state.qty) || state.poleRate !== '');
+    if (draftDirty && !confirm('This replaces the bill currently in the editor (unsaved changes will be lost). Continue?')) return;
+    applyState(row.data); currentId = id;
     setView('editor');
     if (t.dataset.print !== undefined) {
       setTab('preview');
@@ -612,7 +668,7 @@ function pushProfile() {
   clearTimeout(profileTimer);
   profileTimer = setTimeout(() => {
     const firm = firmName();
-    if (firm) api('profiles', { method: 'PUT', body: { firm, gstin: state.gstin, phone: state.phone } }).catch(() => {});
+    if (firm) api('profiles', { method: 'PUT', body: { firm, gstin: state.gstin, phone: state.phone } }).catch(e => { console.warn('Profile sync failed', e); cloudStatus('GSTIN/phone not synced to cloud: ' + e.message, 'err'); });
   }, 800);
 }
 $('gstin').addEventListener('input', pushProfile);
@@ -625,9 +681,10 @@ $('saveBtn').addEventListener('click', async () => {
   try {
     cloudStatus('Saving…');
     const { id } = await api('invoices', { method: 'POST', body: { id: currentId, data: snapshot() } });
+    if (!Number.isInteger(id)) throw new Error('Server did not confirm the save — please try again');
     currentId = id;
     cloudStatus('Saved ✓ bill #' + (state.invNo || '—') + ' — see “Saved bills”', 'ok');
-    refreshList().catch(() => {});
+    refreshList().catch(e => { console.warn(e); cloudStatus('Saved ✓ (but could not refresh the list: ' + e.message + ')', 'ok'); });
   } catch (e) { cloudStatus(e.message, 'err'); }
 });
 $('newBtn').addEventListener('click', () => {
@@ -639,6 +696,8 @@ $('newBtn').addEventListener('click', () => {
 
 // Cloud is optional: the app still prints without the API / database.
 (async () => {
-  try { await syncProfiles(); await refreshList(); cloudStatus('Connected to cloud ✓', 'ok'); }
-  catch (e) { cloudStatus('Cloud unavailable: ' + e.message, 'err'); }
+  const errs = [];
+  try { await syncProfiles(); } catch (e) { console.warn(e); errs.push('profiles: ' + e.message); }
+  try { await refreshList(); } catch (e) { console.warn(e); errs.push('saved bills: ' + e.message); }
+  if (errs.length) cloudStatus('Cloud problem — ' + errs.join(' · '), 'err'); else cloudStatus('Connected to cloud ✓', 'ok');
 })();
