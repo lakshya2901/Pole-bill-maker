@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#1e3a8a" />
+<title>Pole Invoice &amp; Transport (TC) Bill Maker</title>
+<style id="pageStyle">@page { size: A4 portrait; margin: 0; }</style>
+<link rel="stylesheet" href="/src/style.css" />
+<script type="module" src="/src/main.js"></script>
+</head>
+<body data-view="editor" data-tab="form">
+
+<header class="topbar">
+  <div class="brand"><span class="logo">🧾</span><div><b>Bill Maker</b><small>Pole invoice &amp; transport (TC)</small></div></div>
+  <nav class="tabs" role="tablist">
+    <button type="button" class="tab on" data-view-btn="editor">✏️ <span>New / Edit</span></button>
+    <button type="button" class="tab" data-view-btn="bills">📂 <span>Saved bills</span> <em id="billsCount">0</em></button>
+  </nav>
+</header>
+
+<!-- ================= EDITOR ================= -->
+<section id="viewEditor" class="view">
+  <div class="seg only-mobile" role="tablist">
+    <button type="button" class="on" data-tab-btn="form">Details</button>
+    <button type="button" data-tab-btn="preview">Preview</button>
+  </div>
+
+  <div class="app">
+    <aside class="panel">
+      <details class="card" open><summary>Firm</summary><div class="card-body">
+        <label for="firm">Firm name</label>
+        <select id="firm"></select>
+        <input type="text" id="firmCustom" placeholder="Type firm name" style="display:none;margin-top:6px" />
+        <div class="row2">
+          <div><label for="gstin">GSTIN *</label><input type="text" id="gstin" required autocomplete="off" /></div>
+          <div><label for="phone">Phone *</label><input type="text" id="phone" required inputmode="tel" autocomplete="off" /></div>
+        </div>
+      </div></details>
+
+      <details class="card" open><summary>Invoice &amp; customer</summary><div class="card-body">
+        <div class="row2">
+          <div><label for="invNo">Invoice / Challan No.</label><input type="text" id="invNo" inputmode="numeric" autocomplete="off" /></div>
+          <div><label for="date">Dated</label><input type="text" id="date" placeholder="dd.mm.yy" autocomplete="off" /></div>
+        </div>
+        <div class="row2">
+          <div><label for="customer">Customer</label>
+            <select id="customer"><option value="AVVNL">AVVNL (Ajmer)</option><option value="JDVVNL">JDVVNL (Jodhpur)</option></select></div>
+          <div><label for="tn">TN number</label><input type="text" id="tn" placeholder="e.g. 2050(R)" autocomplete="off" /></div>
+        </div>
+        <label for="toText">To (billed to) — editable</label>
+        <textarea id="toText" rows="4"></textarea>
+        <div class="row2">
+          <div><label for="consType">Consigned: AEN office</label>
+            <select id="consType"><option value="O&amp;M">O&amp;M</option><option value="Rural">Rural</option></select></div>
+          <div><label for="consPlace">Place</label><input type="text" id="consPlace" autocomplete="off" /></div>
+        </div>
+        <label for="consText">Consigned to — editable</label>
+        <textarea id="consText" rows="3"></textarea>
+        <div class="row2">
+          <div><label for="consDate1">Consigned Dt (Goods)</label><input type="text" id="consDate1" placeholder="dd.mm.yy" autocomplete="off" /></div>
+          <div><label for="consDate2">Consigned Dt (TC)</label><input type="text" id="consDate2" placeholder="dd.mm.yy" autocomplete="off" /></div>
+        </div>
+      </div></details>
+
+      <details class="card" open><summary>Poles</summary><div class="card-body">
+        <div class="row2">
+          <div><label for="qty">Quantity (Nos.)</label><input type="number" id="qty" min="0" step="1" inputmode="numeric" /></div>
+          <div><label for="poleRate">Rate per pole (₹)</label><input type="number" id="poleRate" min="0" step="any" inputmode="decimal" /></div>
+        </div>
+        <label for="spec">Pole size / weight</label>
+        <input type="text" id="spec" placeholder="9 mtr 200 kg" autocomplete="off" />
+      </div></details>
+
+      <details class="card" open><summary>Transport (TC)</summary><div class="card-body">
+        <label for="chart">Transport rate chart</label>
+        <select id="chart">
+          <option value="A">Chart A — Min C ₹76.95 → 400 KM ₹974.95</option>
+          <option value="B">Chart B — Min C ₹85.05 → 400 KM ₹1162.05</option>
+        </select>
+        <label for="km">Distance (KM, 1–400)</label>
+        <div class="row-km">
+          <input type="number" id="km" min="1" max="400" step="1" inputmode="numeric" />
+          <button type="button" class="btn" id="mincBtn">Min C</button>
+        </div>
+        <div id="kmStatus" class="status"></div>
+        <div class="row2">
+          <div><label for="from">From</label><input type="text" id="from" autocomplete="off" /></div>
+          <div><label for="to">To</label><input type="text" id="to" autocomplete="off" /></div>
+        </div>
+        <label for="tcRate">Rate per pole (₹) — auto, editable</label>
+        <input type="number" id="tcRate" min="0" step="any" inputmode="decimal" />
+        <div class="row2">
+          <div><label for="tcNo">TC invoice no.</label><input type="text" id="tcNo" placeholder="same as invoice" autocomplete="off" /></div>
+          <div><label for="tcDate">TC bill dated</label><input type="text" id="tcDate" placeholder="same as invoice" autocomplete="off" /></div>
+        </div>
+      </div></details>
+
+      <details class="card"><summary>Tax &amp; print layout</summary><div class="card-body">
+        <label for="taxMode">SGST / CGST paise handling</label>
+        <select id="taxMode">
+          <option value="round">Round to nearest paisa (correct)</option>
+          <option value="trunc">Cut off extra paise (like old bills)</option>
+        </select>
+        <div class="chk"><input type="checkbox" id="incGoods" checked /><label style="margin:0" for="incGoods">Print Goods invoice</label></div>
+        <div class="chk"><input type="checkbox" id="incTc" checked /><label style="margin:0" for="incTc">Print Transport (TC) invoice</label></div>
+        <label for="layout">Paper layout</label>
+        <select id="layout">
+          <option value="p1">1 bill per A4 (portrait)</option>
+          <option value="l2">2 bills per A4 — side by side (landscape)</option>
+          <option value="p2">2 bills per A4 — one above the other (portrait)</option>
+        </select>
+        </div></details>
+
+    </aside>
+
+    <main class="preview">
+      <div class="preview-bar"><span id="sheetInfo"></span><span>Live preview</span></div>
+      <div class="sheets-wrap"><div id="sheets"></div></div>
+    </main>
+  </div>
+
+  <div class="actionbar">
+    <div id="cloudStatus" class="status"></div>
+    <div class="actions">
+      <button type="button" class="btn" id="newBtn">＋ New</button>
+      <button type="button" class="btn" id="saveBtn">💾 Save</button>
+      <button type="button" class="btn" id="wordBtn">📄 Word</button>
+      <button type="button" class="btn primary" id="printBtn">🖨 Print</button>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SAVED BILLS ================= -->
+<section id="viewBills" class="view" hidden>
+  <div class="bills-wrap">
+    <div class="bills-head">
+      <h2>Saved bills</h2>
+      <button type="button" class="btn" id="reloadBtn">↻ Refresh</button>
+    </div>
+    <input type="search" id="billSearch" placeholder="Search by invoice no, firm, TN, customer, date…" autocomplete="off" />
+    <div class="chips" id="firmChips"></div>
+    <div class="bills-summary" id="billsSummary"></div>
+    <div id="billsList" class="bills-list"></div>
+  </div>
+</section>
+
+</body>
+</html>

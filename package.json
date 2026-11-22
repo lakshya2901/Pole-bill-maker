@@ -1,0 +1,23 @@
+{
+  "name": "pole-invoice-maker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes vercel dev",
+    "dev:ui": "vite --host --port 5180 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview",
+    "db:setup": "node --env-file=.env.local scripts/setup-db.js"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.0",
+    "docx": "^9.16.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
