@@ -369,7 +369,7 @@ async function buildDocxBlob() {
 
     // items table
     const tf = pt * 0.9, em = tf * 20;
-    const wS = 4.4 * em, wR = 6.2 * em, wP = 2.4 * em, wD = W - wS - wR - wP;
+    const wS = 4.7 * em, wR = 6.2 * em, wP = 2.4 * em, wD = W - wS - wR - wP;
     const mx = 0.35 * em, my = 0.12 * em;
     const cellP = (txt, o = {}) => P(txt === '' ? [R('', 2)] : [R(txt, tf, o)], txt === '' ? 2 : tf, { align: o.align, indent: o.indent, before: o.before });
     const body = { top: NONE, bottom: NONE, left: LINE, right: LINE };
@@ -476,7 +476,7 @@ async function downloadWord() {
   if (m.length) { alert('Please fill: ' + m.join(', ')); return false; }
   if (!state.incGoods && !state.incTc) { alert('Tick at least one bill to include.'); return false; }
   const blob = await buildDocxBlob();
-  const name = `Bill-${state.invNo || 'draft'}-${firmName()}`.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') + '.docx';
+  const name = `${firmShort()} ${String(state.invNo || 'draft').replace(/[^\w\-. ]+/g, '').trim()}.docx`;   // e.g. "GCW 29.docx"
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
