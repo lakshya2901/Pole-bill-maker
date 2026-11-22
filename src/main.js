@@ -80,7 +80,7 @@ let tcRateManual = !!state.tcRateManual;            // user typed their own tran
 let profiles = JSON.parse(localStorage.getItem('billProfiles') || '{}'); // gstin/phone per firm
 if (!profiles['Babel Cement']) profiles['Babel Cement'] = { gstin:'08AGKPB8389F1Z2', phone:'94142-59198' };
 
-const FIRM_SHORT = { 'Gaurav Cement Works':'GCW', 'Peeyush Cement Works':'PCW', 'Babel Cement':'BCW' };
+const FIRM_SHORT = { 'Gaurav Cement Works':'GCW', 'Peeyush Cement Works':'PCW', 'Babel Cement':'BC' };
 function firmShort() {
   const f = firmName().trim();
   return FIRM_SHORT[f] || f.split(/\s+/).map(w => w[0] || '').join('').toUpperCase();
@@ -351,7 +351,7 @@ async function buildDocxBlob() {
     [ 'Mfgrs. Of –All Types P.C.C. Poles', `${isTc ? 'TC ' : ''}Invoice No/Challan .${invNo}`, `Dated:- ${date}` ]
       .forEach(t => out.push(P([R(t, f1)], f1, { align: AlignmentType.CENTER })));
 
-    // To / Consigned (bottom-aligned, consigned block is 38% wide)
+    // To / Consigned (bottom-aligned, consigned block is 26% wide)
     const f2 = pt * 0.88, hb = 0.5 * f2 * 20;
     const toLines = ['To,', ...String(state.toText).split('\n')];
     const consLines = String(state.consText).split('\n');
@@ -361,7 +361,7 @@ async function buildDocxBlob() {
     consLines.forEach(l => consParas.push(P([R(l, f2)], f2)));
     consParas.push(P(m ? [R(m[1], f2), R(m[2], f2, { b: true, u: true })] : [R(last, f2)], f2));
     if (consDate) consParas.push(P([R('Dt:-' + consDate, f2)], f2));
-    const hw1 = W * 0.62, hw2 = W - hw1;
+    const hw1 = W * 0.74, hw2 = W - hw1;
     out.push(T([new TableRow({ children: [
       C(toLines.map((l, i) => P([R(l, f2)], f2, { before: i ? 0 : hb })), hw1, { v: VerticalAlign.BOTTOM }),
       C(consParas.map((p, i) => p), hw2, { v: VerticalAlign.BOTTOM, mt: hb })

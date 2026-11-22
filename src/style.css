@@ -113,7 +113,7 @@ input.invalid { border-color:var(--err); background:#fef2f2; }
   .bill .invno { text-align:center; font-size:.82em; }
   .bill .head { display:flex; justify-content:space-between; align-items:flex-end; margin-top:.5em; font-size:.88em; }
   .bill .to { white-space:pre-line; }
-  .bill .cons { white-space:pre-line; width:38%; }
+  .bill .cons { white-space:pre-line; width:26%; }
   .bill .cons u, .bill .cons b { }
   .bill table.items { width:100%; border-collapse:collapse; margin-top:.6em; font-size:.9em; border:1px solid #000; }
   .bill table.items th { font-weight:400; border:1px solid #000; padding:.15em .35em; }
